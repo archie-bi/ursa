@@ -2,6 +2,12 @@
 
 A fast, keyboard-driven tmux session manager built with [Ratatui](https://ratatui.rs/).
 
+## Why Ursa?
+
+- **For Claude Code users** - Quickly manage tmux sessions while coding with AI assistance
+- **For mobile terminal users** - No need to type long tmux commands on a small phone keyboard
+- **No memorization required** - Forget `tmux kill-session -t`, `tmux rename-session`, etc. Just use arrow keys
+
 ## Features
 
 - List all tmux sessions at a glance
