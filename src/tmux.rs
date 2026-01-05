@@ -75,16 +75,27 @@ pub fn kill_session(name: &str) -> Result<(), String> {
     }
 }
 
-pub fn attach_session(name: &str) -> Result<(), String> {
-    let status = Command::new("tmux")
-        .args(["switch-client", "-t", name])
-        .status()
-        .map_err(|e| format!("Failed to attach session: {}", e))?;
+/// Returns true if currently running inside a tmux session
+pub fn is_inside_tmux() -> bool {
+    std::env::var("TMUX").is_ok()
+}
 
-    if status.success() {
-        Ok(())
+pub fn attach_session(name: &str) -> Result<(), String> {
+    if is_inside_tmux() {
+        // Use switch-client when inside tmux
+        let output = Command::new("tmux")
+            .args(["switch-client", "-t", name])
+            .output()
+            .map_err(|e| format!("Failed to switch client: {}", e))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Failed to switch to session: {}", stderr.trim()))
+        }
     } else {
-        // If switch-client fails (not in tmux), try attach-session
+        // Use attach-session when outside tmux
         let status = Command::new("tmux")
             .args(["attach-session", "-t", name])
             .status()

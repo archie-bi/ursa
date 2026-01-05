@@ -2,12 +2,16 @@ mod app;
 mod tmux;
 mod ui;
 
+use std::process::Command;
 use std::time::Duration;
 
 use app::{App, AppAction};
 use color_eyre::Result;
 use crossterm::event::{self, Event, KeyEventKind};
 use ratatui::DefaultTerminal;
+
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -18,16 +22,44 @@ fn main() -> Result<()> {
 
     // Handle post-TUI actions (attaching to session)
     if let Ok(Some(AppAction::AttachSession(name))) = result {
-        if let Err(e) = tmux::attach_session(&name) {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        }
+        attach_to_session(&name);
     } else if let Err(e) = result {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 
     Ok(())
+}
+
+/// Attach to a tmux session, using exec when outside tmux for reliable attachment
+fn attach_to_session(name: &str) {
+    if tmux::is_inside_tmux() {
+        // Inside tmux: use switch-client (doesn't need exec)
+        if let Err(e) = tmux::attach_session(name) {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    } else {
+        // Outside tmux: use exec to replace this process with tmux attach
+        // This gives tmux full control of the terminal
+        #[cfg(unix)]
+        {
+            let err = Command::new("tmux")
+                .args(["attach-session", "-t", name])
+                .exec();
+            // exec only returns on error
+            eprintln!("Error: Failed to attach to session: {}", err);
+            std::process::exit(1);
+        }
+
+        #[cfg(not(unix))]
+        {
+            if let Err(e) = tmux::attach_session(name) {
+                eprintln!("Error: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }
 
 fn run(terminal: &mut DefaultTerminal) -> Result<Option<AppAction>> {
