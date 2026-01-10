@@ -16,6 +16,13 @@ pub enum SessionAction {
     Delete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum FocusArea {
+    #[default]
+    SessionList,
+    TitleBar,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppAction {
     None,
@@ -25,6 +32,7 @@ pub enum AppAction {
 
 pub struct App {
     pub state: AppState,
+    pub focus_area: FocusArea,
     pub sessions: Vec<TmuxSession>,
     pub selected_index: usize,
     pub selected_action: SessionAction,
@@ -45,6 +53,7 @@ impl App {
         let sessions = tmux::list_sessions();
         Self {
             state: AppState::SessionList,
+            focus_area: FocusArea::SessionList,
             sessions,
             selected_index: 0,
             selected_action: SessionAction::default(),
@@ -64,9 +73,14 @@ impl App {
         }
     }
 
-    /// Total items = sessions + "Create new session" option
+    /// Total items = sessions + "Create new session" option (+ input row when creating)
     pub fn total_items(&self) -> usize {
-        self.sessions.len() + 1
+        let base = self.sessions.len() + 1;
+        if self.state == AppState::CreatingSession {
+            base + 1
+        } else {
+            base
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -92,16 +106,21 @@ impl App {
                 self.should_quit = true;
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.selected_index > 0 {
+                if self.focus_area == FocusArea::TitleBar {
+                    // Already at title bar, do nothing
+                } else if self.selected_index > 0 {
                     self.selected_index -= 1;
-                    // Reset action to Enter when changing selection
                     self.selected_action = SessionAction::Enter;
+                } else {
+                    // At top of list, move focus to title bar
+                    self.focus_area = FocusArea::TitleBar;
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if self.selected_index < self.total_items() - 1 {
+                if self.focus_area == FocusArea::TitleBar {
+                    self.focus_area = FocusArea::SessionList;
+                } else if self.selected_index < self.total_items() - 1 {
                     self.selected_index += 1;
-                    // Reset action to Enter when changing selection
                     self.selected_action = SessionAction::Enter;
                 }
             }
@@ -126,7 +145,12 @@ impl App {
                 }
             }
             KeyCode::Enter => {
-                self.select_current();
+                if self.focus_area == FocusArea::TitleBar {
+                    self.refresh_sessions();
+                    self.focus_area = FocusArea::SessionList;
+                } else {
+                    self.select_current();
+                }
             }
             KeyCode::Char('r') => {
                 self.refresh_sessions();
